@@ -14,7 +14,9 @@ use std::{
 };
 
 mod action;
+mod cache;
 mod issues;
+mod scheduler;
 mod ui;
 
 use action::Action;
@@ -56,6 +58,10 @@ pub struct Hourglass {
 
 impl Hourglass {
     pub fn new() -> Self {
+        let mut table_state = TableState::default();
+
+        table_state.select(Some(0));
+
         Self {
             should_quit: false,
             input: String::new(),
@@ -63,7 +69,7 @@ impl Hourglass {
             next_id: 1,
             tasks: vec![],
             issues: vec![],
-            table_state: TableState::default(),
+            table_state,
 
             tabs: vec![String::from("tasks"), String::from("issues")],
             tab_index: 0,
@@ -98,9 +104,9 @@ impl Hourglass {
         // how is rust able to run an infinite loop without crashing?
 
         loop {
-            terminal.draw(|f| {
-                ui::build_ui(f, self);
-            })?;
+            // terminal.draw(|f| {
+            //     ui::build_ui(f, self);
+            // })?;
 
             // wtf is the point of this?
             let timeout = tick_rate
@@ -188,71 +194,71 @@ impl Hourglass {
                 self.view = View::Issues(Action::View);
 
                 // TODO: cache the issues
-                self.issues = vec![
-                    RepoIssue {
-                        id: 1,
-                        node_id: "Test".to_string(),
-                        html_url: "Test URL".to_string(),
-                        number: 1234,
-                        title: "Dummy issue".to_string(),
-                        body: "Fix stuff".to_string(),
-                        created_at: "2023-06-04T21:19:30.546904Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(),
-                        updated_at: "2023-06-04T21:19:30.546904Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(),
-                        user: GitUser {
-                            login: "hieu".to_string(),
-                            id: 1,
-                            node_id: "Test".to_string(),
-                        },
-                    },
-                    RepoIssue {
-                        id: 1,
-                        node_id: "Test".to_string(),
-                        html_url: "Test URL".to_string(),
-                        number: 2,
-                        title: "Dummy issue".to_string(),
-                        body: "Fix stuff".to_string(),
-                        created_at: "2023-06-04T21:19:30.546904Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(),
-                        updated_at: "2023-06-04T21:19:30.546904Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(),
-                        user: GitUser {
-                            login: "hieu".to_string(),
-                            id: 1,
-                            node_id: "Test".to_string(),
-                        },
-                    },
-                    RepoIssue {
-                        id: 1,
-                        node_id: "Test".to_string(),
-                        html_url: "Test URL".to_string(),
-                        number: 3,
-                        title: "Dummy issue".to_string(),
-                        body: "Fix stuff".to_string(),
-                        created_at: "2023-06-04T21:19:30.546904Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(),
-                        updated_at: "2023-06-04T21:19:30.546904Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(),
-                        user: GitUser {
-                            login: "hieu".to_string(),
-                            id: 1,
-                            node_id: "Test".to_string(),
-                        },
-                    },
-                ]
-                // let issues = match get_issues() {
-                //     Some(issues) => issues,
-                //     None => vec![],
-                // };
+                // self.issues = vec![
+                //     RepoIssue {
+                //         id: 1,
+                //         node_id: "Test".to_string(),
+                //         html_url: "Test URL".to_string(),
+                //         number: 1234,
+                //         title: "Dummy issue".to_string(),
+                //         body: "Fix stuff".to_string(),
+                //         created_at: "2023-06-04T21:19:30.546904Z"
+                //             .parse::<DateTime<Utc>>()
+                //             .unwrap(),
+                //         updated_at: "2023-06-04T21:19:30.546904Z"
+                //             .parse::<DateTime<Utc>>()
+                //             .unwrap(),
+                //         user: GitUser {
+                //             login: "hieu".to_string(),
+                //             id: 1,
+                //             node_id: "Test".to_string(),
+                //         },
+                //     },
+                //     RepoIssue {
+                //         id: 1,
+                //         node_id: "Test".to_string(),
+                //         html_url: "Test URL".to_string(),
+                //         number: 2,
+                //         title: "Dummy issue".to_string(),
+                //         body: "Fix stuff".to_string(),
+                //         created_at: "2023-06-04T21:19:30.546904Z"
+                //             .parse::<DateTime<Utc>>()
+                //             .unwrap(),
+                //         updated_at: "2023-06-04T21:19:30.546904Z"
+                //             .parse::<DateTime<Utc>>()
+                //             .unwrap(),
+                //         user: GitUser {
+                //             login: "hieu".to_string(),
+                //             id: 1,
+                //             node_id: "Test".to_string(),
+                //         },
+                //     },
+                //     RepoIssue {
+                //         id: 1,
+                //         node_id: "Test".to_string(),
+                //         html_url: "Test URL".to_string(),
+                //         number: 3,
+                //         title: "Dummy issue".to_string(),
+                //         body: "Fix stuff".to_string(),
+                //         created_at: "2023-06-04T21:19:30.546904Z"
+                //             .parse::<DateTime<Utc>>()
+                //             .unwrap(),
+                //         updated_at: "2023-06-04T21:19:30.546904Z"
+                //             .parse::<DateTime<Utc>>()
+                //             .unwrap(),
+                //         user: GitUser {
+                //             login: "hieu".to_string(),
+                //             id: 1,
+                //             node_id: "Test".to_string(),
+                //         },
+                //     },
+                // ]
+                let issues = match get_issues() {
+                    Some(issues) => issues,
+                    None => vec![],
+                };
 
-                // self.issues = issues;
+                self.issues = issues;
             }
             _ => {}
         }

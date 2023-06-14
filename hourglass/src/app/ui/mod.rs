@@ -3,8 +3,9 @@ use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
+    symbols::line,
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table, Tabs, Wrap},
     Frame,
 };
 
@@ -19,9 +20,34 @@ struct Field {
 pub fn build_ui<B: Backend>(f: &mut Frame<B>, app: &mut Hourglass) {
     let rects = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        .constraints(
+            [
+                Constraint::Length(2),
+                Constraint::Min(0),
+                Constraint::Length(3),
+            ]
+            .as_ref(),
+        )
         .split(f.size())
         .to_vec();
+
+    let titles = app.tabs.iter().cloned().map(Line::from).collect();
+
+    let tabs = Tabs::new(titles)
+        .style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::DIM),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .remove_modifier(Modifier::DIM),
+        )
+        .divider(line::THICK_VERTICAL)
+        .select(app.tab_index);
+
+    f.render_widget(tabs, rects[0]);
 
     match app.tab_index {
         0 => render_tasks(app, rects.clone(), f),
@@ -36,7 +62,7 @@ fn render_tasks<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Frame
     let task_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(rects[0]);
+        .split(rects[1]);
 
     let rows = app.tasks.iter().map(|task| {
         let height = 1;
@@ -104,7 +130,7 @@ fn render_issues<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Fram
     let issue_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(rects[0]);
+        .split(rects[1]);
 
     let rows = app.issues.iter().map(|issue| {
         let height = 1;
@@ -186,7 +212,7 @@ fn render_command<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Fra
     }
     let command = Block::default().borders(Borders::ALL).title(title);
 
-    f.render_widget(Paragraph::new(app.input.clone()).block(command), rects[1]);
+    f.render_widget(Paragraph::new(app.input.clone()).block(command), rects[2]);
 }
 
 fn render_details<'a, B: ratatui::backend::Backend>(
@@ -197,7 +223,7 @@ fn render_details<'a, B: ratatui::backend::Backend>(
 ) {
     let gap = 2;
     let column_width = 12;
-    let border_char = "-";
+    let border_char = " ";
 
     let mut lines: Vec<Line> = vec![];
 
@@ -265,13 +291,9 @@ fn render_table<'a, T>(rows: T, header_content: Vec<&'a str>) -> Table<'a>
 where
     T: IntoIterator<Item = Row<'a>>,
 {
-    let header_cells = header_content.iter().map(|x| {
-        Cell::from(*x).style(
-            Style::default()
-                // .add_modifier(Modifier::UNDERLINED)
-                .add_modifier(Modifier::DIM),
-        )
-    });
+    let header_cells = header_content
+        .iter()
+        .map(|x| Cell::from(*x).style(Style::default().add_modifier(Modifier::DIM)));
 
     let header = Row::new(header_cells)
         .style(Style::default())
@@ -283,10 +305,9 @@ where
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .title("Tasks")
-                .padding(Padding::uniform(1)),
+                .padding(Padding::horizontal(1)),
         )
-        .highlight_symbol(">")
+        .highlight_symbol("> ")
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .widths(&[
             Constraint::Percentage(15),

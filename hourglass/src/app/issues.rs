@@ -9,20 +9,22 @@ use std::env;
 use std::process::Command;
 use url::Url;
 
+use crate::app::cache::ISSUES_CACHE;
+
 struct GitRepo {
     name: String,
     owner: String,
     url: String,
     repo_type: String,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GitUser {
     pub login: String,
     pub id: u32,
     pub node_id: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct RepoIssue {
     pub id: u32,
     pub node_id: String,
@@ -36,6 +38,10 @@ pub struct RepoIssue {
 }
 
 pub fn get_issues() -> Option<Vec<RepoIssue>> {
+    if let Some(issues) = ISSUES_CACHE.lock().unwrap().get("issues") {
+        return Some(issues.to_vec());
+    }
+
     let output = Command::new("git")
         .arg("remote")
         .arg("-v")
@@ -83,6 +89,11 @@ pub fn get_issues() -> Option<Vec<RepoIssue>> {
             .expect("Unable to get issues");
 
         let issues: Vec<RepoIssue> = res.json().expect("Unable to parse json resposne");
+
+        ISSUES_CACHE
+            .lock()
+            .unwrap()
+            .insert("issues", issues.clone());
 
         return Some(issues);
     } else {

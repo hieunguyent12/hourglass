@@ -737,6 +737,7 @@ dependencies = [
  "chrono",
  "crossterm 0.25.0",
  "dotenv",
+ "lazy_static",
  "oauth",
  "ratatui",
  "regex",
