@@ -160,6 +160,11 @@ fn render_issues<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Fram
         let selected_issue = app.issues.get(i);
 
         if let Some(issue) = selected_issue {
+            let issue_body = match issue.body.clone() {
+                Some(body) => body,
+                _ => String::new(),
+            };
+
             render_details(
                 f,
                 issue_layout.to_vec(),
@@ -179,7 +184,7 @@ fn render_issues<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Fram
                     },
                     Field {
                         name: String::from("Body"),
-                        value: issue.body.clone(),
+                        value: issue_body,
                     },
                     Field {
                         name: String::from("Created at"),

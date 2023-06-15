@@ -16,11 +16,13 @@ use std::{
 mod action;
 mod cache;
 mod issues;
-mod scheduler;
+pub mod scheduler;
 mod ui;
 
+use crate::app::cache::ISSUES_CACHE;
 use action::Action;
 use issues::{get_issues, GitUser, RepoIssue};
+use scheduler::{Scheduler, TimeUnits};
 
 enum View {
     Task(Action),
@@ -54,6 +56,8 @@ pub struct Hourglass {
 
     tasks: Vec<Task>,
     issues: Vec<RepoIssue>,
+
+    is_issues_scheduler_running: bool,
 }
 
 impl Hourglass {
@@ -64,6 +68,7 @@ impl Hourglass {
 
         Self {
             should_quit: false,
+            is_issues_scheduler_running: false,
             input: String::new(),
             view: View::Task(Action::View),
             next_id: 1,
@@ -103,10 +108,28 @@ impl Hourglass {
         let tick_rate = Duration::from_millis(250);
         // how is rust able to run an infinite loop without crashing?
 
+        let mut scheduler = Scheduler::new();
+
+        if !self.is_issues_scheduler_running {
+            scheduler
+                .run(|| {
+                    // clear the cache
+                    ISSUES_CACHE.lock().unwrap().remove("issues");
+
+                    // fetch issues again and refresh the cache
+                    get_issues();
+                })
+                .every(30.seconds());
+
+            self.is_issues_scheduler_running = true;
+        }
+
         loop {
-            // terminal.draw(|f| {
-            //     ui::build_ui(f, self);
-            // })?;
+            terminal.draw(|f| {
+                ui::build_ui(f, self);
+            })?;
+
+            scheduler.start();
 
             // wtf is the point of this?
             let timeout = tick_rate

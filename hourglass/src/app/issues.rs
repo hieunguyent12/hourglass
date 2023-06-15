@@ -31,7 +31,7 @@ pub struct RepoIssue {
     pub html_url: String,
     pub number: u32,
     pub title: String,
-    pub body: String,
+    pub body: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub user: GitUser,
@@ -87,6 +87,10 @@ pub fn get_issues() -> Option<Vec<RepoIssue>> {
             .header(USER_AGENT, owner)
             .send()
             .expect("Unable to get issues");
+
+        // println!("{:?}", res.text());
+
+        // let issues = vec![];
 
         let issues: Vec<RepoIssue> = res.json().expect("Unable to parse json resposne");
 
