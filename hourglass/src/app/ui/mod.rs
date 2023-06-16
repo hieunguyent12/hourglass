@@ -4,10 +4,13 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols::line,
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table, Tabs, Wrap},
     Frame,
 };
+use std::cmp;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{Action, Hourglass, View, TIME_FORMAT};
 use crate::util::{convert_utc_to_local, format_time};
@@ -205,6 +208,14 @@ fn render_issues<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Fram
 }
 
 fn render_command<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Frame<B>) {
+    let position = get_cursor_position(app.command_input.as_str());
+
+    f.set_cursor(
+        // clamp the position of the cursor to the width of the command container
+        cmp::min(rects[2].x + 1 + position as u16, rects[2].width - 2),
+        rects[2].y + 1,
+    );
+
     let mut title = String::from("Command");
 
     match &app.view {
@@ -213,11 +224,17 @@ fn render_command<B: Backend>(app: &mut Hourglass, rects: Vec<Rect>, f: &mut Fra
             Action::Update => title.push_str(" - Update task"),
             _ => {}
         },
-        View::Issues(action) => {}
+        View::Issues(_action) => {}
     }
     let command = Block::default().borders(Borders::ALL).title(title);
 
-    f.render_widget(Paragraph::new(app.input.clone()).block(command), rects[2]);
+    f.render_widget(
+        Paragraph::new(Text::from(app.command_input.as_str()))
+            .block(command)
+            // we use saturating_sub here to prevent overflow when the command input is empty
+            .scroll((0, ((position + 3) as u16).saturating_sub(rects[2].width))),
+        rects[2],
+    );
 }
 
 fn render_details<'a, B: ratatui::backend::Backend>(
@@ -319,4 +336,17 @@ where
             Constraint::Percentage(75),
             Constraint::Percentage(10),
         ])
+}
+
+// https://github.com/kdheepak/taskwarrior-tui/blob/main/src/app.rs#L890
+fn get_cursor_position(text: &str) -> usize {
+    let mut position = 0;
+
+    // not sure why we have to use grapheme here, instead of just using the length of the string to get the width
+    // probably because it supports international alphabets which may or may not have the same form as the traditional Latin ones?
+    for (_i, (_j, g)) in text.grapheme_indices(true).enumerate() {
+        position += g.width();
+    }
+
+    position
 }

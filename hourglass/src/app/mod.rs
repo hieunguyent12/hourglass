@@ -5,6 +5,9 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, widgets::TableState, Terminal};
+use rustyline::line_buffer::DeleteListener;
+use rustyline::line_buffer::Direction;
+use rustyline::line_buffer::{ChangeListener, LineBuffer};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs;
@@ -21,8 +24,26 @@ mod ui;
 
 use crate::app::cache::ISSUES_CACHE;
 use action::Action;
-use issues::{get_issues, GitUser, RepoIssue};
+use issues::{get_issues, RepoIssue};
 use scheduler::{Scheduler, TimeUnits};
+
+const MAX_LINE_CAPACITY: usize = 4096;
+
+/// Undo manager
+#[derive(Default)]
+pub struct Changeset {}
+
+impl DeleteListener for Changeset {
+    fn delete(&mut self, idx: usize, string: &str, _: Direction) {}
+}
+
+impl ChangeListener for Changeset {
+    fn insert_char(&mut self, idx: usize, c: char) {}
+
+    fn insert_str(&mut self, idx: usize, string: &str) {}
+
+    fn replace(&mut self, idx: usize, old: &str, new: &str) {}
+}
 
 enum View {
     Task(Action),
@@ -43,20 +64,16 @@ struct Task {
 }
 
 pub struct Hourglass {
-    should_quit: bool,
-    input: String,
+    command_input: LineBuffer,
+    changes: Changeset,
     next_id: i32,
-
     view: View,
-
     table_state: TableState,
-
     tabs: Vec<String>,
     tab_index: usize,
-
     tasks: Vec<Task>,
     issues: Vec<RepoIssue>,
-
+    should_quit: bool,
     is_issues_scheduler_running: bool,
 }
 
@@ -69,13 +86,13 @@ impl Hourglass {
         Self {
             should_quit: false,
             is_issues_scheduler_running: false,
-            input: String::new(),
+            command_input: LineBuffer::with_capacity(MAX_LINE_CAPACITY),
+            changes: Changeset::default(),
             view: View::Task(Action::View),
             next_id: 1,
             tasks: vec![],
             issues: vec![],
             table_state,
-
             tabs: vec![String::from("tasks"), String::from("issues")],
             tab_index: 0,
         }
@@ -216,66 +233,6 @@ impl Hourglass {
             "issues" => {
                 self.view = View::Issues(Action::View);
 
-                // TODO: cache the issues
-                // self.issues = vec![
-                //     RepoIssue {
-                //         id: 1,
-                //         node_id: "Test".to_string(),
-                //         html_url: "Test URL".to_string(),
-                //         number: 1234,
-                //         title: "Dummy issue".to_string(),
-                //         body: "Fix stuff".to_string(),
-                //         created_at: "2023-06-04T21:19:30.546904Z"
-                //             .parse::<DateTime<Utc>>()
-                //             .unwrap(),
-                //         updated_at: "2023-06-04T21:19:30.546904Z"
-                //             .parse::<DateTime<Utc>>()
-                //             .unwrap(),
-                //         user: GitUser {
-                //             login: "hieu".to_string(),
-                //             id: 1,
-                //             node_id: "Test".to_string(),
-                //         },
-                //     },
-                //     RepoIssue {
-                //         id: 1,
-                //         node_id: "Test".to_string(),
-                //         html_url: "Test URL".to_string(),
-                //         number: 2,
-                //         title: "Dummy issue".to_string(),
-                //         body: "Fix stuff".to_string(),
-                //         created_at: "2023-06-04T21:19:30.546904Z"
-                //             .parse::<DateTime<Utc>>()
-                //             .unwrap(),
-                //         updated_at: "2023-06-04T21:19:30.546904Z"
-                //             .parse::<DateTime<Utc>>()
-                //             .unwrap(),
-                //         user: GitUser {
-                //             login: "hieu".to_string(),
-                //             id: 1,
-                //             node_id: "Test".to_string(),
-                //         },
-                //     },
-                //     RepoIssue {
-                //         id: 1,
-                //         node_id: "Test".to_string(),
-                //         html_url: "Test URL".to_string(),
-                //         number: 3,
-                //         title: "Dummy issue".to_string(),
-                //         body: "Fix stuff".to_string(),
-                //         created_at: "2023-06-04T21:19:30.546904Z"
-                //             .parse::<DateTime<Utc>>()
-                //             .unwrap(),
-                //         updated_at: "2023-06-04T21:19:30.546904Z"
-                //             .parse::<DateTime<Utc>>()
-                //             .unwrap(),
-                //         user: GitUser {
-                //             login: "hieu".to_string(),
-                //             id: 1,
-                //             node_id: "Test".to_string(),
-                //         },
-                //     },
-                // ]
                 let issues = match get_issues() {
                     Some(issues) => issues,
                     None => vec![],
@@ -287,6 +244,8 @@ impl Hourglass {
         }
 
         self.table_state = TableState::default();
+
+        self.table_state.select(Some(0));
     }
 
     fn toggle_task_status(&mut self) {
@@ -298,10 +257,8 @@ impl Hourglass {
     }
 
     fn add_task(&mut self) {
-        let description = self.input.clone();
+        let description = self.command_input.as_str().to_string();
         let time = Utc::now();
-
-        self.input = String::new();
 
         self.tasks.push(Task {
             id: self.next_id,
@@ -312,29 +269,34 @@ impl Hourglass {
         });
 
         self.next_id += 1;
-
         self.save_tasks();
+        self.clear_command();
     }
 
     fn update_task(&mut self) {
         if let Some(i) = self.table_state.selected() {
             if let Some(task) = self.tasks.get_mut(i) {
-                task.description = self.input.clone();
+                task.description = self.command_input.as_str().to_string();
 
                 task.modified_at = Utc::now();
 
                 self.save_tasks();
             }
         }
-
-        self.input = String::new();
+        self.clear_command();
     }
 
     fn remove_task(&mut self) {
         if let Some(index) = self.table_state.selected() {
-            self.tasks.remove(index);
-            self.save_tasks();
+            if index < self.tasks.len() {
+                self.tasks.remove(index);
+                self.save_tasks();
+            }
         }
+    }
+
+    fn clear_command(&mut self) {
+        self.command_input.update("", 0, &mut self.changes);
     }
 
     fn handle_input(&mut self, key_event: KeyEvent) {
@@ -354,29 +316,31 @@ impl Hourglass {
 
     fn update_command_input(&mut self, key_code: KeyCode) {
         match key_code {
-            KeyCode::Char(c) => self.input.push(c),
+            KeyCode::Char(c) => {
+                self.command_input.insert(c, 1, &mut self.changes);
+            }
             KeyCode::Enter => match &self.view {
                 View::Task(action) => match action {
                     Action::Add => {
                         self.add_task();
 
-                        self.view = View::Task(Action::View)
+                        self.view = View::Task(Action::View);
                     }
                     Action::Update => {
                         self.update_task();
 
-                        self.view = View::Task(Action::View)
+                        self.view = View::Task(Action::View);
                     }
                     _ => {}
                 },
 
-                View::Issues(action) => {}
+                View::Issues(_action) => {}
             },
             KeyCode::Backspace => {
-                self.input.pop();
+                self.command_input.backspace(1, &mut self.changes);
             }
             KeyCode::Esc => {
-                self.input = String::new();
+                self.clear_command();
                 self.view = View::Task(Action::View);
             }
             _ => {}

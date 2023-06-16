@@ -11,12 +11,12 @@ use url::Url;
 
 use crate::app::cache::ISSUES_CACHE;
 
-struct GitRepo {
-    name: String,
-    owner: String,
-    url: String,
-    repo_type: String,
-}
+// struct GitRepo {
+//     name: String,
+//     owner: String,
+//     url: String,
+//     repo_type: String,
+// }
 #[derive(Deserialize, Debug, Clone)]
 pub struct GitUser {
     pub login: String,
@@ -87,10 +87,6 @@ pub fn get_issues() -> Option<Vec<RepoIssue>> {
             .header(USER_AGENT, owner)
             .send()
             .expect("Unable to get issues");
-
-        // println!("{:?}", res.text());
-
-        // let issues = vec![];
 
         let issues: Vec<RepoIssue> = res.json().expect("Unable to parse json resposne");
 
