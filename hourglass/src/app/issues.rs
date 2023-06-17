@@ -50,6 +50,12 @@ pub fn get_issues() -> Option<Vec<RepoIssue>> {
 
     let data = String::from_utf8_lossy(&output.stdout).to_string();
 
+    if data.is_empty() {
+        return None;
+    } else if data.starts_with("fatal") {
+        return None;
+    }
+
     let remotes = get_lines(&data);
 
     let fetch_remote = remotes[0];
